@@ -234,7 +234,7 @@ def plot_band_dos_atoms(
     fermi_eV = float(properties["fermi_energy_eV"])  # scalar eV
     formula = atoms.composition.reduced_formula
     bandgap = float(properties["band_gap_eV"])
-    # print("bandgap",bandgap)
+    print("bandgap", bandgap)
     # Geometry for PDOS
     geometry = properties["calc"].geometry
 
@@ -263,7 +263,9 @@ def plot_band_dos_atoms(
     ax1.set_xlabel("k-point")
     ax1.set_ylabel("Energy (eV)")
     # ax1.set_title(f"{jid}  {formula}\nGap: {bandgap:.2f} eV")
-    ax1.set_title("(a)")
+    title = "(a) Gap " + str(round(bandgap, 2))
+    ax1.set_title(title)
+    print("title", title)
     ax1.set_xticks(xticks)
     ax1.set_xticklabels(xtick_labels)
     ax1.set_ylim(energy_range)
@@ -296,7 +298,8 @@ def plot_band_dos_atoms(
         # ax3.fill_betweenx(energy_grid, 0, atom_pdos[atom], alpha=0.25)
     ax3.axhline(0, linestyle="--", alpha=0.7)
     ax3.set_xlabel("Atom PDOS")
-    ax1.set_title("(a)")
+    # ax1.set_title("(a)")
+    ax1.set_title(title)
     ax2.set_title("(b)")
     ax3.set_title("(c)")
     ax3.set_ylim(energy_range)
