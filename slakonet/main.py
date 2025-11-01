@@ -170,6 +170,7 @@ class SimpleDftb:
         densities = []
         occupations = []
         eigenvectors = []
+        successful_k_indices = []  # Track which k-points succeeded
         # Loop over k-points
         for ik in range(self.max_nk):
             try:
@@ -179,6 +180,7 @@ class SimpleDftb:
                 occupations.append(occ)
                 if self.with_eigenvectors:
                     eigenvectors.append(eigenvecs)
+                successful_k_indices.append(ik)
             except Exception as exp:
                 print("ik failed for", ik, exp)
                 pass
@@ -189,6 +191,23 @@ class SimpleDftb:
         self._occupations = pack(occupations).permute(1, 0, 2)
         if self.with_eigenvectors:
             self.eigenvectors = pack(eigenvectors).permute(1, 2, 3, 0)
+
+        # CRITICAL FIX: Filter k_weights to only include successful k-points
+        if len(successful_k_indices) < self.max_nk:
+            print(
+                f"Warning: Only {len(successful_k_indices)}/{self.max_nk} k-points succeeded"
+            )
+            # Filter and renormalize k_weights
+            successful_k_indices_tensor = torch.tensor(
+                successful_k_indices, device=self.device
+            )
+            self.k_weights = self.k_weights[:, successful_k_indices_tensor]
+            # Renormalize to sum to 1
+            self.k_weights = self.k_weights / self.k_weights.sum(
+                dim=1, keepdim=True
+            )
+            print(f"Filtered k_weights shape: {self.k_weights.shape}")
+
         # Clear cache
         self._fermi_energy = None
         self._band_gap = None

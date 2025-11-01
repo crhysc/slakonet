@@ -116,6 +116,172 @@ def _format_kpath_ticks(labels):
     return xticks, xtick_labels
 
 
+def compute_orbital_projected_dos(
+    properties,
+    geometry,
+    sigma=0.1,
+    energy_range=(-8, 6),
+):
+    """Compute orbital-projected DOS (s, p, d, f) from eigenvectors with Gaussian broadening."""
+    # Eigen info from calculator (assumed in eV)
+    fermi_eV = properties["fermi_energy_eV"]
+    eigenvalues = properties["calc"].eigenvalue * H2E  # [1, nk, nb]
+    eigenvectors = properties["calc"].eigenvectors  # [1, norb, nb, nk]
+
+    # Get atom types from geometry
+    atom_types = geometry.chemical_symbols[0]  # e.g., ['Zn', 'Zn', 'O', 'O']
+    unique_atoms = list(dict.fromkeys(atom_types))
+
+    # Get orbital info from basis
+    basis = properties["calc"].basis
+    orbs_per_atom = basis.orbs_per_atom[0].cpu().numpy()  # [9, 9, 4, 4]
+    shells_per_atom = (
+        basis.shells_per_atom[0].cpu().numpy()
+    )  # [3, 3, 2, 2] for [spd, spd, sp, sp]
+    on_atoms = (
+        basis.on_atoms[0].cpu().numpy()
+    )  # which atom each orbital belongs to
+
+    # Map shell types: 0=s(1 orbital), 1=p(3 orbitals), 2=d(5 orbitals), 3=f(7 orbitals)
+    shell_names = ["s", "p", "d", "f"]
+    orbitals_per_shell = [1, 3, 5, 7]
+
+    print(f"Atom types: {atom_types}")
+    print(f"Orbitals per atom: {orbs_per_atom}")
+    print(f"Shells per atom: {shells_per_atom}")
+
+    # Create energy grid
+    n_points = 1000
+    energy_grid = torch.linspace(
+        energy_range[0], energy_range[1], n_points, device=eigenvalues.device
+    )
+    energy_grid_eV = energy_grid + fermi_eV
+
+    # Initialize orbital PDOS for each atom type
+    orbital_pdos = {}
+    for atom in unique_atoms:
+        orbital_pdos[atom] = {
+            shell: torch.zeros(n_points, device=eigenvalues.device)
+            for shell in shell_names
+        }
+
+    # Build orbital-to-atom-and-shell mapping
+    orbital_info = []  # List of (atom_idx, atom_type, shell_type)
+
+    orbital_idx = 0
+    for atom_idx, (atom_type, n_orbs, n_shells) in enumerate(
+        zip(atom_types, orbs_per_atom, shells_per_atom)
+    ):
+        # Determine which shells this atom has based on n_orbs
+        # For example: 9 orbitals = s(1) + p(3) + d(5), so shells [0,1,2]
+        # For example: 4 orbitals = s(1) + p(3), so shells [0,1]
+
+        remaining_orbs = n_orbs
+        shell_idx = 0
+        while remaining_orbs > 0 and shell_idx < len(orbitals_per_shell):
+            n_shell_orbs = orbitals_per_shell[shell_idx]
+            if remaining_orbs >= n_shell_orbs:
+                # This shell is present
+                for _ in range(n_shell_orbs):
+                    orbital_info.append(
+                        (atom_idx, atom_type, shell_names[shell_idx])
+                    )
+                    orbital_idx += 1
+                remaining_orbs -= n_shell_orbs
+            shell_idx += 1
+
+    print(f"Total orbitals mapped: {len(orbital_info)}")
+    print(f"Example orbital mapping (first 10): {orbital_info[:10]}")
+
+    # Gaussian normalization
+    norm_factor = 1.0 / (sigma * np.sqrt(2 * np.pi))
+
+    # Loop over k-points and bands
+    batch_size, n_kpoints, n_bands = eigenvalues.shape
+    for k in range(n_kpoints):
+        for b in range(n_bands):
+            eigenval = eigenvalues[0, k, b]
+            psi = eigenvectors[0, :, b, k]  # shape [n_orbitals]
+            diff = energy_grid_eV - eigenval
+            gaussian = norm_factor * torch.exp(-0.5 * (diff / sigma) ** 2)
+
+            # Project onto each orbital
+            for orb_idx, (atom_idx, atom_type, shell_type) in enumerate(
+                orbital_info
+            ):
+                orbital_weight = torch.abs(psi[orb_idx]) ** 2
+                orbital_pdos[atom_type][shell_type] += (
+                    orbital_weight * gaussian
+                )
+
+    # Average over k-points
+    for atom in orbital_pdos:
+        for shell in orbital_pdos[atom]:
+            orbital_pdos[atom][shell] /= n_kpoints
+
+    # Convert to numpy
+    energy_np = energy_grid.detach().cpu().numpy()
+    orbital_pdos_np = {}
+    for atom in orbital_pdos:
+        orbital_pdos_np[atom] = {
+            shell: pdos.detach().cpu().numpy()
+            for shell, pdos in orbital_pdos[atom].items()
+        }
+
+    return energy_np, orbital_pdos_np, unique_atoms
+
+
+def plot_orbital_projected_dos(
+    energy_np,
+    orbital_pdos_np,
+    unique_atoms,
+    fermi_eV=0.0,
+    filename="orbital_pdos.png",
+):
+    """Plot orbital-projected DOS for each atom type."""
+    import matplotlib.pyplot as plt
+
+    n_atoms = len(unique_atoms)
+    fig, axes = plt.subplots(n_atoms, 1, figsize=(8, 4 * n_atoms), sharex=True)
+
+    if n_atoms == 1:
+        axes = [axes]
+
+    colors = {"s": "blue", "p": "red", "d": "green", "f": "purple"}
+
+    for idx, atom in enumerate(unique_atoms):
+        ax = axes[idx]
+
+        for shell in ["s", "p", "d", "f"]:
+            if shell in orbital_pdos_np[atom]:
+                dos = orbital_pdos_np[atom][shell]
+                if (
+                    dos.max() > 1e-6
+                ):  # Only plot if there's significant contribution
+                    ax.fill_between(
+                        energy_np,
+                        dos,
+                        alpha=0.5,
+                        label=f"{atom}-{shell}",
+                        color=colors[shell],
+                    )
+                    ax.plot(energy_np, dos, color=colors[shell], linewidth=1)
+
+        ax.axvline(
+            x=0, color="black", linestyle="--", linewidth=1, label="Fermi"
+        )
+        ax.set_ylabel(f"{atom} DOS (states/eV)")
+        ax.legend(loc="upper right")
+        ax.grid(True, alpha=0.3)
+
+    axes[-1].set_xlabel("Energy - E_F (eV)")
+    plt.tight_layout()
+    plt.savefig(filename, dpi=300, bbox_inches="tight")
+    print(f"Orbital-projected DOS saved to {filename}")
+
+    return fig
+
+
 def compute_atom_projected_dos(
     properties,
     geometry,
@@ -124,22 +290,25 @@ def compute_atom_projected_dos(
     filename="slakonet_bands.png",
 ):
     """Compute atom-type projected DOS from eigenvectors with Gaussian broadening."""
-
     # Eigen info from calculator (assumed in eV)
     fermi_eV = properties["fermi_energy_eV"]
-    eigenvalues = (
-        properties["calc"].eigenvalue * H2E
-    )  # - fermi_eV  # [1, nk, nb]
+    eigenvalues = properties["calc"].eigenvalue * H2E  # [1, nk, nb]
     eigenvectors = properties["calc"].eigenvectors  # [1, norb, nb, nk]
 
-    # Atom symbols (list for the single geometry in batch)
-    atom_types = geometry.chemical_symbols[
-        0
-    ]  # e.g., ['Si', 'Si', 'Si', 'Si', 'C', 'C', 'C', 'C']
+    # Get atom types from geometry
+    atom_types = geometry.chemical_symbols[0]  # e.g., ['Zn', 'Zn', 'O', 'O']
     unique_atoms = list(dict.fromkeys(atom_types))  # preserve order
 
-    # print(f"Atom types from geometry: {atom_types}")
-    # print(f"Unique atoms: {unique_atoms}")
+    # Get orbital-to-atom mapping from basis
+    basis = properties["calc"].basis
+    orbs_per_atom = basis.orbs_per_atom[0].cpu().numpy()  # [9, 9, 4, 4]
+    on_atoms = (
+        basis.on_atoms[0].cpu().numpy()
+    )  # which atom each orbital belongs to
+
+    print(f"Atom types: {atom_types}")
+    print(f"Orbitals per atom: {orbs_per_atom}")
+    print(f"Unique atoms: {unique_atoms}")
 
     # Create energy grid (relative to Fermi for plotting)
     n_points = 1000
@@ -154,32 +323,20 @@ def compute_atom_projected_dos(
         for atom in unique_atoms
     }
 
-    # Infer orbitals_per_atom from eigenvectors
-    n_orbitals = eigenvectors.shape[1]
-    n_atoms = len(atom_types)
-    if n_orbitals % n_atoms != 0:
-        raise ValueError(
-            f"n_orbitals ({n_orbitals}) not divisible by n_atoms ({n_atoms})."
-        )
-    orbitals_per_atom = n_orbitals // n_atoms
+    # Map orbital indices to atom types using on_atoms
+    orbital_to_atom_type = []
+    for orb_idx in range(len(on_atoms)):
+        atom_idx = on_atoms[orb_idx]
+        orbital_to_atom_type.append(atom_types[atom_idx])
 
-    # print(f"Computing PDOS for atom types: {unique_atoms}")
-    # print(f"Total atoms: {len(atom_types)}")
-
-    # Map atoms to orbital indices (contiguous blocks per atom)
-    atom_orbital_map = {}
-    orbital_idx = 0
-    for at in atom_types:
-        if at not in atom_orbital_map:
-            atom_orbital_map[at] = []
-        atom_orbital_map[at].extend(
-            range(orbital_idx, orbital_idx + orbitals_per_atom)
-        )
-        orbital_idx += orbitals_per_atom
+    # Create mapping from atom type to orbital indices
+    atom_orbital_map = {atom: [] for atom in unique_atoms}
+    for orb_idx, atom_type in enumerate(orbital_to_atom_type):
+        atom_orbital_map[atom_type].append(orb_idx)
 
     # print(f"Orbital mapping: {atom_orbital_map}")
 
-    # Gaussian normalization (scalar float is fine)
+    # Gaussian normalization
     norm_factor = 1.0 / (sigma * np.sqrt(2 * np.pi))
 
     # Loop over k-points and bands
@@ -188,7 +345,6 @@ def compute_atom_projected_dos(
         for b in range(n_bands):
             eigenval = eigenvalues[0, k, b]
             psi = eigenvectors[0, :, b, k]  # shape [n_orbitals]
-
             diff = energy_grid_eV - eigenval
             gaussian = norm_factor * torch.exp(-0.5 * (diff / sigma) ** 2)
 
@@ -224,6 +380,7 @@ def plot_band_dos_atoms(
     properties, atoms, kpoints = get_properties(
         jid=jid, model=model, atoms=atoms
     )
+    properties["model"] = model
     if filename is None:
         filename = "slakonet_out.png"
     if jid is not None and filename is None:
@@ -265,7 +422,7 @@ def plot_band_dos_atoms(
     # ax1.set_title(f"{jid}  {formula}\nGap: {bandgap:.2f} eV")
     title = "(a) Gap " + str(round(bandgap, 2))
     ax1.set_title(title)
-    print("title", title)
+    # print("title", title)
     ax1.set_xticks(xticks)
     ax1.set_xticklabels(xtick_labels)
     ax1.set_ylim(energy_range)
