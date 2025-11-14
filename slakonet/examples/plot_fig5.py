@@ -46,19 +46,20 @@ times_gpu = [
 
 plt.plot(nums, times_cpu)
 plt.plot(nums, times_gpu)
-plt.tight_layout("times.png")
+plt.tight_layout()
+plt.savefig("times.png")
 plt.close()
 
-sys.exit()
+# sys.exit()
 
 model_best = default_model()
-
+# model_best=model_best.float()
 atoms, _, _ = get_atoms(jid="JVASP-1002")
 shell_dict = generate_shell_dict_upto_Z65()
 kpoints = torch.tensor([1, 1, 1])
 
 scells = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-# scells=[1,2,3,4,5]
+scells = [1, 2, 3, 4, 5]
 times_gpu = []
 times_cpu = []
 nums = []

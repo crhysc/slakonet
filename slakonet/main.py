@@ -29,8 +29,9 @@ try:
     from phonopy.file_IO import write_FORCE_CONSTANTS, write_disp_yaml
 except Exception:
     pass
+torch.set_default_dtype(torch.float32)
+# torch.set_default_dtype(torch.float64)
 # torch.set_default_dtype(torch.float32)
-torch.set_default_dtype(torch.float64)
 H2E = 27.211
 
 
@@ -141,8 +142,9 @@ class SimpleDftb:
         s_k = self.overlap[..., ik]
 
         # Solve generalized eigenvalue problem
-        # eigenvals, eigenvecs = eighb(h_k, s_k,broadening_method=None,scheme="lowd")
+        # eigenvals, eigenvecs = eighb(h_k, s_k, scheme="chol")
         eigenvals, eigenvecs = eighb(h_k, s_k, scheme="chol")
+        # eigenvals, eigenvecs = eighb(h_k, s_k,broadening_method=None,scheme="lowd")
         # try:
         #  eigenvals, eigenvecs = eighb(h_k, s_k,scheme="chol")
         # except:
@@ -622,6 +624,7 @@ class SimpleDftb:
             eigenvalues=self.eigenvalue,
             n_electrons=self.nelectron,
             k_weights=self.k_weights,
+            kT=kT,
             # k_weights=self.k_weights,
         )
         # print("fermi_energy main", fermi_energy, fermi_energy.device)
@@ -652,6 +655,101 @@ class SimpleDftb:
             eigenvals = eigenvals * H2E
 
         return eigenvals
+
+    def calculate_band_gapX(self, kT=0.025):
+        """Calculate band gap from eigenvalues and occupations.
+
+        Parameters
+        ----------
+        kT : float
+            Electronic temperature in eV for Fermi energy calculation
+
+        Returns
+        -------
+        dict
+            Dictionary containing:
+            - 'gap' : Band gap in eV
+            - 'vbm' : Valence band maximum in eV
+            - 'cbm' : Conduction band minimum in eV
+            - 'direct' : Boolean indicating if gap is direct
+            - 'vbm_kpoint' : k-point index of VBM
+            - 'cbm_kpoint' : k-point index of CBM
+        """
+        if self._band_gap is None:
+            fermi_energy = self.get_fermi_energy(kT)
+            eigenvals_eV = self.eigenvalue * H2E
+            fermi_eV = fermi_energy * H2E
+
+            # Masks
+            occupied_mask = eigenvals_eV < fermi_eV
+            unoccupied_mask = eigenvals_eV >= fermi_eV
+            bands_at_fermi = torch.abs(eigenvals_eV - fermi_eV) < 1e-3
+
+            # Debug (optional)
+            # print("min(E)", eigenvals_eV.min().item(),
+            #       "max(E)", eigenvals_eV.max().item(),
+            #       "Ef", fermi_eV.item())
+            # print("n_occ", occupied_mask.sum().item(),
+            #       "n_unocc", unoccupied_mask.sum().item())
+
+            # Case 1: metallic bands (already in your code)
+            if torch.any(bands_at_fermi):
+                print("System is metallic - bands cross Fermi level")
+                self._band_gap = {
+                    "gap": torch.tensor(0.0, device=eigenvals_eV.device),
+                    "vbm": fermi_eV,
+                    "cbm": fermi_eV,
+                    "direct": False,
+                    "vbm_kpoint": 0,
+                    "cbm_kpoint": 0,
+                }
+
+            # Case 2: no occupied OR no unoccupied states (ill-defined gap)
+            elif (not torch.any(occupied_mask)) or (
+                not torch.any(unoccupied_mask)
+            ):
+                print(
+                    "Warning: no occupied or no unoccupied states relative to Fermi; "
+                    "treating system as metallic / gapless."
+                )
+                self._band_gap = {
+                    "gap": torch.tensor(0.0, device=eigenvals_eV.device),
+                    "vbm": fermi_eV,
+                    "cbm": fermi_eV,
+                    "direct": False,
+                    "vbm_kpoint": 0,
+                    "cbm_kpoint": 0,
+                }
+
+            else:
+                # Case 3: proper insulator/semiconductor
+                vbm = torch.max(eigenvals_eV[occupied_mask])
+                cbm = torch.min(eigenvals_eV[unoccupied_mask])
+
+                # Find k-point indices
+                vbm_indices = torch.where(eigenvals_eV == vbm)
+                cbm_indices = torch.where(eigenvals_eV == cbm)
+
+                vbm_kpoint = (
+                    vbm_indices[1][0] if len(vbm_indices[1]) > 0 else 0
+                )
+                cbm_kpoint = (
+                    cbm_indices[1][0] if len(cbm_indices[1]) > 0 else 0
+                )
+
+                # Check if direct gap
+                direct = vbm_kpoint == cbm_kpoint
+
+                self._band_gap = {
+                    "gap": cbm - vbm,
+                    "vbm": vbm,
+                    "cbm": cbm,
+                    "direct": bool(direct),
+                    "vbm_kpoint": int(vbm_kpoint.item()),
+                    "cbm_kpoint": int(cbm_kpoint.item()),
+                }
+
+        return self._band_gap
 
     def calculate_band_gap(self, kT=0.025):
         """
@@ -697,6 +795,8 @@ class SimpleDftb:
                 }
             else:
                 # Find VBM and CBM
+                # print("occupied_mask",occupied_mask)
+                # print("eigenvals_eV[occupied_mask]",eigenvals_eV[occupied_mask])
                 vbm = torch.max(eigenvals_eV[occupied_mask])
                 cbm = torch.min(eigenvals_eV[unoccupied_mask])
 
@@ -1692,6 +1792,9 @@ class SimpleDftb:
         --------
         dict : Dictionary containing various properties
         """
+        # fermi_energy = 0 #self.get_fermi_energy(kT)
+        # band_gap_info = 0 #self.calculate_band_gap(kT)
+        # print('DOUBLE')
         try:
             fermi_energy = self.get_fermi_energy(kT)
             band_gap_info = self.calculate_band_gap(kT)

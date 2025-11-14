@@ -11,6 +11,8 @@ from slakonet.utils import psort
 
 _Scheme = Callable[[Tensor, Tensor, float_like], Tensor]
 
+H2E = 27.211
+
 
 def _smearing_preprocessing(
     eigenvalues: Tensor, fermi_energy: Tensor, kT: float_like
@@ -137,6 +139,89 @@ def gaussian_smearing(
 
 
 def fermi_search(
+    eigenvalues: torch.Tensor,
+    n_electrons,
+    k_weights: torch.Tensor = None,
+    kT: float = 0.01,
+    max_iter: int = 80,
+):
+    """
+    Robust Fermi energy solver using bisection, including k-point weights.
+
+    Args
+    ----
+    eigenvalues : tensor [..., kpoints, orbitals]  (in Hartree)
+    n_electrons : float or tensor (total electron count)
+    k_weights   : tensor [..., kpoints]
+    kT          : electronic temperature in eV
+    """
+    device = eigenvalues.device
+    dtype = eigenvalues.dtype
+
+    # Ensure n_electrons is tensor with matching dtype/device
+    if not isinstance(n_electrons, torch.Tensor):
+        n_electrons = torch.tensor(n_electrons, device=device, dtype=dtype)
+    else:
+        n_electrons = n_electrons.to(device=device, dtype=dtype)
+
+    # eigenvalues shape: [..., kpoints, orbitals]
+    orig_shape = eigenvalues.shape[:-2]
+    eig = eigenvalues  # [..., kpoints, orbitals]
+
+    # k-weights: [..., kpoints]
+    if k_weights is None:
+        # uniform weights
+        nk = eig.shape[-2]
+        k_weights = (
+            torch.ones(*orig_shape, nk, device=device, dtype=dtype) / nk
+        )
+    else:
+        k_weights = k_weights.to(device=device, dtype=dtype)
+
+    # Convert kT from eV to Hartree if needed; here H2E is Hartree->eV
+    # so kT_H = kT / H2E
+    kT_H = torch.tensor(kT / H2E, device=device, dtype=dtype)
+
+    # Helper: Fermi-Dirac with clamped exponent for numerical stability
+    def fermi_dirac_local(E, mu):
+        # occupancy = 1 / (exp((E - mu)/kT) + 1)
+        x = (E - mu) / kT_H
+        # clamp to avoid overflow/underflow
+        x = torch.clamp(x, -50.0, 50.0)
+        return 1.0 / (torch.exp(x) + 1.0)
+
+    # Compute a bracket [mu_low, mu_high] that surely contains Fermi level
+    # Work in Hartree units (eigenvalues already are)
+    emin = eig.amin(dim=(-1, -2), keepdim=True)
+    emax = eig.amax(dim=(-1, -2), keepdim=True)
+
+    # Extend bracket slightly beyond the band edges
+    mu_low = emin - 10.0 * kT_H
+    mu_high = emax + 10.0 * kT_H
+
+    # Bisection iterations
+    for _ in range(max_iter):
+        mu_mid = 0.5 * (mu_low + mu_high)
+
+        occ_mid = fermi_dirac_local(eig, mu_mid)  # [..., kpoints, orbitals]
+        weighted_occ = occ_mid * k_weights.unsqueeze(-1)
+        n_mid = 2.0 * weighted_occ.sum(
+            dim=(-1, -2), keepdim=True
+        )  # spin factor
+
+        # If n(mid) > n_target, we are too high in mu → move upper bound down
+        high_mask = n_mid > n_electrons
+        low_mask = ~high_mask
+
+        mu_high = torch.where(high_mask, mu_mid, mu_high)
+        mu_low = torch.where(low_mask, mu_mid, mu_low)
+
+    mu_final = 0.5 * (mu_low + mu_high)
+    # Return with same shape convention as before: [..., 1]
+    return mu_final.squeeze(-1)
+
+
+def fermi_search_old(
     eigenvalues=[],
     n_electrons=None,
     k_weights=None,

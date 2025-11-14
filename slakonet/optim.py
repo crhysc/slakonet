@@ -39,7 +39,8 @@ import requests
 import io
 
 matplotlib.rcParams["figure.max_open_warning"] = 50
-torch.set_default_dtype(torch.float64)
+# torch.set_default_dtype(torch.float32)
+# torch.set_default_dtype(torch.float32)
 
 random_seed = 42
 random.seed(random_seed)
@@ -84,7 +85,8 @@ def kpts_to_klines(kpts, default_points=10):
                       Each row is [kx1, ky1, kz1, kx2, ky2, kz2, n_points]
     """
     if not isinstance(kpts, torch.Tensor):
-        kpts = torch.tensor(kpts, dtype=torch.float64)
+        kpts = torch.tensor(kpts).type(torch.get_default_dtype())
+        # kpts = torch.tensor(kpts, dtype=torch.float32)
 
     num_pairs = (kpts.shape[0] - 1) // 2 + ((kpts.shape[0] - 1) % 2 == 0)
     segments = []
@@ -93,7 +95,12 @@ def kpts_to_klines(kpts, default_points=10):
         k1 = kpts[i]
         k2 = kpts[i + 1]
         seg = torch.cat(
-            [k1, k2, torch.tensor([default_points], dtype=torch.float64)]
+            [
+                k1,
+                k2,
+                torch.tensor([default_points]).type(torch.get_default_dtype()),
+            ]
+            # [k1, k2, torch.tensor([default_points], dtype=torch.float32)]
         )
         segments.append(seg)
 
@@ -731,11 +738,17 @@ class MultiElementSkfParameterOptimizer(nn.Module):
 
             # Create parameter dicts directly from skf_dict (no original params)
             h_param_dict = {
-                k: nn.Parameter(torch.tensor(v, dtype=torch.float64))
+                k: nn.Parameter(
+                    torch.tensor(v).type(torch.get_default_dtype())
+                )
+                # k: nn.Parameter(torch.tensor(v, dtype=torch.float32))
                 for k, v in optimizer.skf_dict["hamiltonian"].items()
             }
             s_param_dict = {
-                k: nn.Parameter(torch.tensor(v, dtype=torch.float64))
+                k: nn.Parameter(
+                    torch.tensor(v).type(torch.get_default_dtype())
+                )
+                # k: nn.Parameter(torch.tensor(v, dtype=torch.float32))
                 for k, v in optimizer.skf_dict["overlap"].items()
             }
 
@@ -1370,13 +1383,19 @@ class SkfParameterOptimizer(nn.Module):
         # Make Hamiltonian and overlap parameters trainable
         h_param_dict = {}
         for key, value in self.skf_dict["hamiltonian"].items():
-            original_tensor = torch.tensor(value, dtype=torch.float64)
+            original_tensor = torch.tensor(value).type(
+                torch.get_default_dtype()
+            )
+            # original_tensor = torch.tensor(value, dtype=torch.float32)
             self.original_h_params[key] = original_tensor.clone()
             h_param_dict[key] = nn.Parameter(original_tensor)
 
         s_param_dict = {}
         for key, value in self.skf_dict["overlap"].items():
-            original_tensor = torch.tensor(value, dtype=torch.float64)
+            original_tensor = torch.tensor(value).type(
+                torch.get_default_dtype()
+            )
+            # original_tensor = torch.tensor(value, dtype=torch.float32)
             self.original_s_params[key] = original_tensor.clone()
             s_param_dict[key] = nn.Parameter(original_tensor)
 

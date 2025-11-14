@@ -391,7 +391,7 @@ def _s2t(text: Union[str, List[str]], sep: str = " \t", **kwargs) -> Tensor:
     """
     text = sep.join(text) if isinstance(text, list) else text
     return torch.tensor(
-        np.fromstring(text, sep=sep, dtype=np.float64), **kwargs
+        np.fromstring(text, sep=sep, dtype=np.float32), **kwargs
     )
 
 

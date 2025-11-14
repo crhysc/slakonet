@@ -149,7 +149,7 @@ def hs_matrix(
 
     """
 
-    assert geometry.positions.dtype is torch.float64, "dtype should be float64"
+    # assert geometry.positions.dtype is torch.float32, "dtype should be float32"
     is_periodic = geometry.is_periodic
     # train_onsite = kwargs.get("train_onsite", None)
     # ml_onsite = kwargs.get("ml_onsite", None)
@@ -163,21 +163,25 @@ def hs_matrix(
         mat = torch.zeros(
             shape_orbs,  # <- Results matrix
             device=geometry.positions.device,
-            dtype=torch.float64,
+            dtype=geometry.dtype,
+            # dtype=torch.float32,
         )
     else:
         # n_kpoints = kwargs.get("n_kpoints")
         n_kpoints = geometry.n_kpoints
         phase = geometry.phase
+        real_dtype = torch.get_default_dtype()
         assert n_kpoints is not None, "Please set n_kpoints if PBC is True"
         # assert phase is not None, "Please set phase if PBC is True"
         if isinstance(n_kpoints, Tensor):
             n_kpoints = torch.max(n_kpoints)
+        dtype = torch.complex128 if phase is not None else real_dtype
         mat = torch.zeros(
             *shape_orbs,
             n_kpoints,
             device=geometry.positions.device,
-            dtype=torch.complex128 if phase is not None else torch.float64,
+            dtype=dtype,
+            # dtype=torch.complex128 if phase is not None else torch.float32,
         )
 
     # The multi_varible offer multi-dimensional interpolation and gather of
@@ -383,7 +387,7 @@ def hs_matrix(
             # Only calculate row, and use the following code to get all if PBC:
             # mat.transpose(-2, -3)[[*a_mask1]] = ...
             a_mask = torch.nonzero((l_mat_f == l_pair).all(-1) * mask_dist_l).T
-
+        sk_data = sk_data.to(dtype=mat.dtype)
         mat[tuple(a_mask)] = sk_data  # (ℓ_1, ℓ_2) blocks, i.e. the row blocks
         # mat[[*a_mask]] = sk_data  # (ℓ_1, ℓ_2) blocks, i.e. the row blocks
         if not is_periodic:
@@ -562,7 +566,7 @@ def add_kpoint(
     number = torch.unique(geometry.atomic_numbers)
     unique_number = number[number.ne(0)]
 
-    assert geometry.positions.dtype is torch.float64, "dtype should be float64"
+    # assert geometry.positions.dtype is torch.float32, "dtype should be float32"
     is_periodic = geometry.is_periodic
     train_onsite = kwargs.get("train_onsite", True)
     cutoff = kwargs.get("cutoff", 10.0)
@@ -574,11 +578,13 @@ def add_kpoint(
     # assert phase is not None, "Please set phase if PBC is True"
     if isinstance(n_kpoints, Tensor):
         n_kpoints = torch.max(n_kpoints)
+    dtype = torch.complex128 if phase is not None else real_dtype
     matc = torch.zeros(
         *shape_orbs,
         n_kpoints,
         device=geometry.positions.device,
-        dtype=torch.complex128 if phase is not None else torch.float64,
+        dtype=dtype,
+        # dtype=torch.complex128 if phase is not None else torch.float32,
     )
 
     # The multi_varible offer multi-dimensional interpolation and gather of
@@ -658,6 +664,7 @@ def add_kpoint(
             mat[mask] = hs_pred_dict[key][0] * hs_dict[key_l][mask]
 
         sk_data = sub_block_rot(l_pair, g_vecs, mat)
+        sk_data = sk_data.to(dtype=mat.dtype)
 
         mask_img_dist = torch.nonzero(mask_dist)
         mask_batch = index_mask_a[0][mask_img_dist[..., 1]]
@@ -695,7 +702,6 @@ def add_kpoint(
                 sk_data = sk_data.reshape(-1, nc)[r]
             else:
                 sk_data = sk_data.reshape(-1, nc, sk_data.shape[-1])[r]
-
         if l_pair[0] == 0:
             sk_data = sk_data.flatten(0, 2)
         else:
@@ -730,7 +736,7 @@ def add_kpoint(
             # Only calculate row, and use the following code to get all if PBC:
             # mat.transpose(-2, -3)[[*a_mask1]] = ...
             a_mask = torch.nonzero((l_mat_f == l_pair).all(-1) * mask_dist_l).T
-
+        sk_data = sk_data.to(dtype=mat.dtype)
         matc[[*a_mask]] = sk_data  # (ℓ_1, ℓ_2) blocks, i.e. the row blocks
 
         if l_pair[0] == l_pair[1]:

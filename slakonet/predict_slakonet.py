@@ -16,6 +16,7 @@ import argparse
 from jarvis.io.vasp.inputs import Poscar
 import argparse
 import sys
+import time
 
 plt.rcParams.update({"font.size": 18})
 
@@ -59,10 +60,14 @@ parser.add_argument(
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 
-def load_trained_model(model_path):
-    model = MultiElementSkfParameterOptimizer.load_model(
-        model_path, method="state_dict"
+def load_trained_model(model_path, method="compact"):
+    model = MultiElementSkfParameterOptimizer.load_ultra_compact(
+        # model = MultiElementSkfParameterOptimizer.load_model(
+        model_path
+        # model_path, method="state_dict"
     )
+    # model.float()
+    # model=model.half()
     model.eval()
     return model
 
@@ -73,6 +78,7 @@ def get_properties(jid="", model=None, atoms=None, dataset=None):
     if model is None:
         model = default_model()
 
+    # model=model.float()
     geometry = Geometry.from_ase_atoms([atoms.ase_converter()])
     shell_dict = generate_shell_dict_upto_Z65()
 
@@ -376,7 +382,7 @@ def plot_band_dos_atoms(
 ):
     if not model:
         model = load_trained_model(model_path)
-
+    model = model.float()
     properties, atoms, kpoints = get_properties(
         jid=jid, model=model, atoms=atoms
     )
@@ -502,6 +508,7 @@ if __name__ == "__main__":
             )
 
     # fig, properties, atom_pdos, energy_grid = plot_band_dos_atoms(jid='JVASP-107')
+    t1 = time.time()
     fig, properties, atom_pdos, energy_grid = plot_band_dos_atoms(
         atoms=atoms,
         model_path=model_path,
@@ -510,3 +517,5 @@ if __name__ == "__main__":
         energy_range=energy_range,
         filename=output_filename,
     )
+    t2 = time.time()
+    print("Time(s)", t2 - t1)

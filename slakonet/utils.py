@@ -12,6 +12,7 @@ Tensor = torch.Tensor
 __sort = namedtuple("sort", ("values", "indices"))
 Sliceable = Union[List[Tensor], Tuple[Tensor]]
 bool_like = Union[Tensor, bool]
+# float_like = Union[Tensor, torch.float32]
 float_like = Union[Tensor, float]
 
 
@@ -370,7 +371,6 @@ class _SymEigB(torch.autograd.Function):
 
         # Compute eigen-values & vectors using torch.linalg.eigh.
         w, v = torch.linalg.eigh(a)
-
         # Save tensors that will be needed in the backward pass
         ctx.save_for_backward(w, v)
 
@@ -718,9 +718,16 @@ def eighb(
 
     # Initial setup to make function calls easier to deal with
     # If smearing use _SymEigB otherwise use the internal torch.syeig function
-    func = _SymEigB.apply if broadening_method else torch.linalg.eigh
+    if broadening_method is None:
+        func = torch.linalg.eigh
+        args = ()
+    else:
+        func = _SymEigB.apply
+        args = (broadening_method, factor)
+
+    ####func = _SymEigB.apply if broadening_method else torch.linalg.eigh
     # Set up for the arguments
-    args = (broadening_method, factor) if broadening_method else (True,)
+    #####args = (broadening_method, factor) if broadening_method else (True,)
 
     if aux:
         # Convert from zero-padding to identity padding

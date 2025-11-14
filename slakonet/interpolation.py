@@ -115,11 +115,25 @@ class PolyInterpU:
         r_max = (n_grid_point - 1) * self.grid_step + self.tail
         ind = torch.floor(rr / self.grid_step).long().to(self._device)
         # result = torch.zeros(*rr.shape, self.yy.shape[-1], device=self._device)
-        result = (
-            torch.zeros(rr.shape)
-            if self.yy.dim() == 1
-            else torch.zeros(rr.shape[0], *self.yy.shape[1:])
-        )
+        # result = (
+        #    torch.zeros(rr.shape)
+        #    if self.yy.dim() == 1
+        #    else torch.zeros(rr.shape[0], *self.yy.shape[1:])
+        # )
+        # Allocate result on same device & dtype as yy
+        if self.yy.dim() == 1:
+            result = torch.zeros(
+                rr.shape,
+                device=self._device,
+                dtype=self.yy.dtype,
+            )
+        else:
+            result = torch.zeros(
+                rr.shape[0],
+                *self.yy.shape[1:],
+                device=self._device,
+                dtype=self.yy.dtype,
+            )
 
         # => polynomial fit
         if (ind <= n_grid_point).any():
