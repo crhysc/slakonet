@@ -41,7 +41,7 @@ conda activate slakonet
 ```
 git clone https://github.com/atomgptlab/slakonet.git
 cd slakonet
-pip install -e .
+pip install uv; uv pip install -e .
 ```
 
 ## Quick Start
