@@ -2049,31 +2049,8 @@ def default_model(dir_path=None, model_name="slakonet_v0"):
     url = "https://figshare.com/ndownloader/files/57945370"
 
     print(f"Downloading and loading {model_name} model from zip...")
-    
-    # Add headers to look like a browser
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-    }
+    response = requests.get(url, stream=True)
 
-    # Poll Figshare until the file is ready (Status 200)
-    import time
-    max_retries = 10
-    retry_count = 0
-    
-    response = requests.get(url, stream=True, headers=headers)
-    while response.status_code == 202 and retry_count < max_retries:
-        print(f"Figshare is preparing the file (Status 202). Waiting 3 seconds... ({retry_count + 1}/{max_retries})")
-        time.sleep(3)
-        response = requests.get(url, stream=True, headers=headers)
-        retry_count += 1
-
-    if response.status_code != 200:
-        raise Exception(f"Failed to download file. Final Status Code: {response.status_code}")
-
-    # Read zip data into memory
-    zip_data = io.BytesIO()
-    total_size = int(response.headers.get("content-length", 0))
-    
     # Read zip data into memory
     zip_data = io.BytesIO()
     total_size = int(response.headers.get("content-length", 0))
@@ -2084,12 +2061,6 @@ def default_model(dir_path=None, model_name="slakonet_v0"):
         progress_bar.update(len(chunk))
     progress_bar.close()
 
-    # ------------- DEBUG LINES ------------
-    zip_data.seek(0)
-    print(f"DEBUG: Total bytes downloaded: {len(zip_data.getvalue())}")
-    print(f"DEBUG: First 200 bytes: {zip_data.read(200)}")
-    # --------------------------------------
-    
     zip_data.seek(0)  # Reset to beginning
 
     # Process zip from memory
