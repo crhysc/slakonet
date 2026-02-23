@@ -75,6 +75,7 @@ class SimpleDftb:
         repulsive=False,
         device=None,
         with_eigenvectors=False,
+        pairwise_cutoff_length=7,
     ):
         if device is None:
             device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -94,27 +95,28 @@ class SimpleDftb:
         # Initialize basis
         self.basis = Basis(self.geometry.atomic_numbers, self.shell_dict)
         self.atom_orbitals = self.basis.orbs_per_atom
+        self.pairwise_cutoff_length = pairwise_cutoff_length
 
         # Initialize periodic structure with k-points
         if kpoints is not None and klines is not None:
             self.periodic = Periodic(
                 self.geometry,
                 self.geometry.cell,
-                cutoff=20.0,
+                cutoff=self.pairwise_cutoff_length,
                 kpoints=kpoints,
                 klines=klines,
             )
         elif kpoints is not None:
             self.periodic = Periodic(
-                self.geometry, self.geometry.cell, cutoff=20.0, kpoints=kpoints
+                self.geometry, self.geometry.cell, cutoff=self.pairwise_cutoff_length, kpoints=kpoints
             )
         elif klines is not None:
             self.periodic = Periodic(
-                self.geometry, self.geometry.cell, cutoff=20.0, klines=klines
+                self.geometry, self.geometry.cell, cutoff=self.pairwise_cutoff_length, klines=klines
             )
         else:
             self.periodic = Periodic(
-                self.geometry, self.geometry.cell, cutoff=20.0
+                self.geometry, self.geometry.cell, cutoff=self.pairwise_cutoff_length
             )
 
         self.kpoints = self.periodic.kpoints
@@ -256,6 +258,7 @@ class SimpleDftb:
                 h_feed=self.h_feed,
                 s_feed=self.s_feed,
                 nelectron=self.nelectron,
+                pairwise_cutoff_length=self.pairwise_cutoff_length
             )
 
             # Compute properties
@@ -362,6 +365,7 @@ class SimpleDftb:
                 h_feed=self.h_feed,
                 s_feed=self.s_feed,
                 nelectron=self.nelectron,
+                pairwise_cutoff_length=self.pairwise_cutoff_length,
             )
 
             # Run calculation
@@ -1198,7 +1202,7 @@ class SimpleDftb:
                     self.periodic = Periodic(
                         self.geometry,
                         self.geometry.cell,
-                        cutoff=20.0,
+                        cutoff=self.pairwise_cutoff_length,
                         kpoints=original_kpoints,
                         klines=original_klines,
                     )
@@ -1207,7 +1211,7 @@ class SimpleDftb:
                     self.periodic = Periodic(
                         self.geometry,
                         self.geometry.cell,
-                        cutoff=20.0,
+                        cutoff=self.pairwise_cutoff_length,
                         kpoints=original_kpoints,
                     )
                 elif has_klines:
@@ -1215,12 +1219,12 @@ class SimpleDftb:
                     self.periodic = Periodic(
                         self.geometry,
                         self.geometry.cell,
-                        cutoff=20.0,
+                        cutoff=self.pairwise_cutoff_length,
                         klines=original_klines,
                     )
                 else:
                     self.periodic = Periodic(
-                        self.geometry, self.geometry.cell, cutoff=20.0
+                        self.geometry, self.geometry.cell, cutoff=self.pairwise_cutoff_length
                     )
 
                 # Update k_weights and max_nk
@@ -1451,6 +1455,7 @@ class SimpleDftb:
                 h_feed=self.h_feed,
                 s_feed=self.s_feed,
                 nelectron=self.nelectron,
+                pairwise_cutoff_length=self.pairwise_cutoff_length,
             )
 
             # Compute properties
