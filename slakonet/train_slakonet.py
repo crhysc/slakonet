@@ -23,6 +23,7 @@ class SlakoNetConfig(BaseSettings):
     plot_frequency: int = 5
     weight_by_system_size: bool = True
     early_stopping_patience: int = 20
+    pairwise_cutoff_length: float = 7
 
 
 H2E = 27.211
