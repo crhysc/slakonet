@@ -97,6 +97,10 @@ class SimpleDftb:
         self.atom_orbitals = self.basis.orbs_per_atom
         self.pairwise_cutoff_length = pairwise_cutoff_length
 
+        print(
+            f"SimpleDftb class using pairwise cutoff length of {self.pairwise_cutoff_length} Angstroms"
+        )
+
         # Initialize periodic structure with k-points
         if kpoints is not None and klines is not None:
             self.periodic = Periodic(
