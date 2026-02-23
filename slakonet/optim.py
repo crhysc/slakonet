@@ -2049,13 +2049,30 @@ def default_model(dir_path=None, model_name="slakonet_v0"):
     url = "https://figshare.com/ndownloader/files/57945370"
 
     print(f"Downloading and loading {model_name} model from zip...")
-    response = requests.get(url, stream=True)
+    
+    # Add headers to look like a browser
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+    }
 
-    # ------------- DEBUG LINES -------------
-    print(f"DEBUG: Status Code: {response.status_code}")
-    print(f"DEBUG: Content-Type: {response.headers.get('content-type')}")
-    print(f"DEBUG: Final URL: {response.url}")
-    # ---------------------------------------
+    # Poll Figshare until the file is ready (Status 200)
+    import time
+    max_retries = 10
+    retry_count = 0
+    
+    response = requests.get(url, stream=True, headers=headers)
+    while response.status_code == 202 and retry_count < max_retries:
+        print(f"Figshare is preparing the file (Status 202). Waiting 3 seconds... ({retry_count + 1}/{max_retries})")
+        time.sleep(3)
+        response = requests.get(url, stream=True, headers=headers)
+        retry_count += 1
+
+    if response.status_code != 200:
+        raise Exception(f"Failed to download file. Final Status Code: {response.status_code}")
+
+    # Read zip data into memory
+    zip_data = io.BytesIO()
+    total_size = int(response.headers.get("content-length", 0))
     
     # Read zip data into memory
     zip_data = io.BytesIO()
