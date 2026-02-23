@@ -65,4 +65,5 @@ if __name__ == "__main__":
         save_directory=config.save_directory,
         weight_by_system_size=config.weight_by_system_size,
         early_stopping_patience=config.early_stopping_patience,
+        pairwise_cutoff_length=config.pairwise_cutoff_length
     )
