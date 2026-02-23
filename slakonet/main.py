@@ -2105,6 +2105,7 @@ if __name__ == "__main__":
         h_feed=h_feed,
         s_feed=s_feed,
         nelectron=nelectron,
+        pairwise_cutoff_length=5,
     )
 
     # Run calculation
@@ -2129,6 +2130,7 @@ if __name__ == "__main__":
         h_feed=h_feed,
         s_feed=s_feed,
         nelectron=nelectron,
+        pairwise_cutoff_length=5,
     )
 
     print("Computing DOS...")
