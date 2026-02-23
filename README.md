@@ -14,15 +14,31 @@ Accurate and efficient prediction of electronic band structures is essential for
 - **Comprehensive properties**: Predicts band structures, DOS, band gaps, and orbital projections
 
 ## Installation
-
-
+Install via pip:
 ```bash
 pip install slakonet
 ```
 
-or
+Or create a conda environment and install SlaKoNet in editable mode. To do so, first, install miniforge https://github.com/conda-forge/miniforge. For example: 
 
-```bash
+```
+wget "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh"
+```
+
+Based on your system requirements, you'll get a file something like 'Miniforge3-XYZ'.
+
+```
+bash Miniforge3-$(uname)-$(uname -m).sh
+```
+
+Now, make a conda environment:
+
+```
+conda create --name slakonet python=3.10 -y
+conda activate slakonet
+```
+
+```
 git clone https://github.com/atomgptlab/slakonet.git
 cd slakonet
 pip install -e .
