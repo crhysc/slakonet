@@ -1938,7 +1938,7 @@ def analyze_multi_vasp_performance(
             # Compute properties
             properties, success = (
                 trained_optimizer.compute_multi_element_properties(
-                    dataset["geometry"], shell_dict, kpoints
+                    dataset["geometry"], shell_dict, kpoints,
                     pairwise_cutoff_length=pairwise_cutoff_length,
                 )
             )
